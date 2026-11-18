@@ -797,10 +797,12 @@ Open http://localhost:3000. If you see the Next.js welcome page, it works. Press
 
    Sign in if a GitHub window pops up. Refresh the repo page: your files should be there.
 
-**Step 5: Open it in your AI editor**
+**Step 5: Start Claude Code**
 
-1. In Cursor: **File → Open Folder** → choose the `walk-in-kiosk` folder itself, not the folder above it.
-2. Open the AI chat panel, paste the **Master context prompt** (Appendix A), then **Prompt 1.1** below.
+1. Install Claude Code (one time) in PowerShell: `irm https://claude.ai/install.ps1 | iex`. Close and reopen PowerShell, then check with `claude --version`.
+2. Copy the **Master context prompt** (Appendix A) into a new file `CLAUDE.md` in the `walk-in-kiosk` folder. Claude Code reads it automatically at the start of every session, so you never paste it again.
+3. In PowerShell, inside `walk-in-kiosk`, type `claude` and log in the first time.
+4. Paste **Prompt 1.1** below. Review and approve the changes it asks to make.
 
 **After every prompt, save your work:**
 
