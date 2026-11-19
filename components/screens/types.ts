@@ -18,6 +18,8 @@ export type SlotDTO = {
   isNow: boolean;
 };
 
+export type CustomerField = "firstName" | "phone";
+
 export type BookingResult = {
   firstName: string;
   serviceLabel: string;

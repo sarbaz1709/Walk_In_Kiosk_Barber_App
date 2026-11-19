@@ -3,16 +3,22 @@ import { Screen } from "@/components/ui/Screen";
 import type { ServiceDTO } from "./types";
 
 type ServiceProps = {
-  services: ServiceDTO[];
+  services: ServiceDTO[] | null; // null = still loading
   onPick: (serviceId: string) => void;
   onBack: () => void;
 };
+
+const PLACEHOLDERS = [1, 2, 3, 4, 5, 6];
 
 export function Service({ services, onPick, onBack }: ServiceProps) {
   return (
     <Screen title="What are you getting?" onBack={onBack}>
       <div className="grid grid-cols-2 gap-4">
-        {services.map((service) => (
+        {services === null &&
+          PLACEHOLDERS.map((box) => (
+            <div key={box} className="min-h-28 rounded-tile bg-surface" />
+          ))}
+        {services?.map((service) => (
           <OptionTile
             key={service.id}
             label={service.label}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { shop } from "@/config/shop";
 import { Details } from "@/components/screens/Details";
 import { Done } from "@/components/screens/Done";
@@ -10,45 +10,11 @@ import { Time } from "@/components/screens/Time";
 import { Welcome } from "@/components/screens/Welcome";
 import type {
   BookingResult,
+  CustomerField,
   KioskStatus,
   ServiceDTO,
   SlotDTO,
 } from "@/components/screens/types";
-
-// Sample data for Part 1, prompt 1.2. Prompt 1.3 replaces all of it with API calls.
-// To preview other states, change these values:
-//   SAMPLE_STATUS:  { state: "before_open", opensAt: "10:00 AM" } or { state: "closed" }
-//   SAMPLE_SLOTS:   null (loading) or [] (no times left)
-//   SAMPLE_OUTCOME: "taken" or "error"
-const SAMPLE_STATUS = { state: "open" } as KioskStatus;
-const SAMPLE_OUTCOME = "booked" as "booked" | "taken" | "error";
-
-const SAMPLE_SERVICES: ServiceDTO[] = [
-  { id: "haircut", label: "Haircut", priceLabel: "$35", durationMin: 30 },
-  { id: "skin-fade", label: "Skin fade", priceLabel: "$45", durationMin: 45 },
-  { id: "buzz-cut", label: "Buzz cut", priceLabel: "$25", durationMin: 15 },
-  { id: "beard", label: "Beard & line-up", priceLabel: "$30", durationMin: 23 },
-  { id: "kids", label: "Kids (5–10)", priceLabel: "$30", durationMin: 20 },
-  { id: "seniors", label: "Seniors 65+", priceLabel: "$30", durationMin: 20 },
-];
-
-const SAMPLE_SLOTS = [
-  { start: "2026-11-18T14:05:00-07:00", label: "2:05 PM", isNow: true },
-  { start: "2026-11-18T14:15:00-07:00", label: "2:15 PM", isNow: false },
-  { start: "2026-11-18T15:15:00-07:00", label: "3:15 PM", isNow: false },
-  { start: "2026-11-18T16:30:00-07:00", label: "4:30 PM", isNow: false },
-  { start: "2026-11-18T17:15:00-07:00", label: "5:15 PM", isNow: false },
-  { start: "2026-11-18T18:00:00-07:00", label: "6:00 PM", isNow: false },
-] as SlotDTO[] | null;
-
-const SAMPLE_BACK_BY: Record<string, string> = {
-  "2:05 PM": "2:00 PM",
-  "2:15 PM": "2:10 PM",
-  "3:15 PM": "3:10 PM",
-  "4:30 PM": "4:25 PM",
-  "5:15 PM": "5:10 PM",
-  "6:00 PM": "5:55 PM",
-};
 
 type State =
   | { screen: "welcome" }
@@ -93,19 +59,34 @@ function reducer(state: State, action: Action): State {
         ? { screen: "time", serviceId: state.serviceId, notice: "taken" }
         : state;
     case "failed":
-      return state.screen === "details" ? { screen: "error" } : state;
+      return { screen: "error" };
   }
 }
 
-function findService(serviceId: string) {
-  return SAMPLE_SERVICES.find((service) => service.id === serviceId) ?? SAMPLE_SERVICES[0];
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+  return response.json();
 }
 
 export default function KioskPage() {
   const [state, dispatch] = useReducer(reducer, { screen: "welcome" });
+  const [status, setStatus] = useState<KioskStatus | null>(null);
+  const [services, setServices] = useState<ServiceDTO[] | null>(null);
+  const [slots, setSlots] = useState<SlotDTO[] | null>(null);
+  const latestSlotsRequest = useRef(0);
   const { screen } = state;
-  const reset = () => dispatch({ type: "reset" });
-  const back = () => dispatch({ type: "back" });
+
+  // Refresh the shop's status and services every time Welcome appears.
+  useEffect(() => {
+    if (screen !== "welcome") return;
+
+    const fail = () => dispatch({ type: "failed" });
+    getJson<KioskStatus>("/api/status").then(setStatus).catch(fail);
+    getJson<{ services: ServiceDTO[] }>("/api/services")
+      .then((data) => setServices(data.services))
+      .catch(fail);
+  }, [screen]);
 
   // Idle reset: any tap or typing restarts the timer.
   useEffect(() => {
@@ -138,42 +119,83 @@ export default function KioskPage() {
     return () => clearTimeout(timer);
   }, [screen]);
 
-  // Stands in for POST /api/book until prompt 1.3.
-  function book(serviceLabel: string, slot: SlotDTO, firstName: string) {
-    setTimeout(() => {
-      if (SAMPLE_OUTCOME === "taken") return dispatch({ type: "taken" });
-      if (SAMPLE_OUTCOME === "error") return dispatch({ type: "failed" });
-      dispatch({
-        type: "booked",
-        result: {
-          firstName,
-          serviceLabel,
-          startLabel: slot.label,
-          backByLabel: SAMPLE_BACK_BY[slot.label],
-          isNow: slot.isNow,
-        },
+  async function loadSlots(serviceId: string) {
+    const request = ++latestSlotsRequest.current;
+    setSlots(null);
+    try {
+      const data = await getJson<{ slots: SlotDTO[] }>(
+        `/api/slots?service=${encodeURIComponent(serviceId)}`,
+      );
+      if (request === latestSlotsRequest.current) setSlots(data.slots);
+    } catch {
+      if (request === latestSlotsRequest.current) dispatch({ type: "failed" });
+    }
+  }
+
+  function pickService(serviceId: string) {
+    dispatch({ type: "pickService", serviceId });
+    loadSlots(serviceId);
+  }
+
+  function back() {
+    if (state.screen === "details") loadSlots(state.serviceId);
+    if (state.screen === "time") latestSlotsRequest.current++; // drop any pending response
+    dispatch({ type: "back" });
+  }
+
+  async function book(
+    serviceId: string,
+    slot: SlotDTO,
+    firstName: string,
+    phone: string,
+  ): Promise<CustomerField[] | undefined> {
+    try {
+      const response = await fetch("/api/book", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ service: serviceId, start: slot.start, firstName, phone }),
       });
-    }, 300);
+      const body = await response.json();
+
+      if (response.ok) {
+        dispatch({ type: "booked", result: body });
+        return;
+      }
+      if (response.status === 409) {
+        latestSlotsRequest.current++;
+        setSlots(body.slots);
+        dispatch({ type: "taken" });
+        return;
+      }
+      if (response.status === 423) {
+        dispatch({ type: "reset" }); // Welcome reloads and shows the closed state
+        return;
+      }
+      if (response.status === 400) {
+        const fields = (body.fields as string[]).filter(
+          (field): field is CustomerField => field === "firstName" || field === "phone",
+        );
+        if (fields.length > 0) return fields;
+      }
+    } catch {
+      // Network failure or an unreadable response: handled below.
+    }
+    dispatch({ type: "failed" });
   }
 
   function renderScreen() {
     switch (state.screen) {
       case "welcome":
-        return <Welcome status={SAMPLE_STATUS} onStart={() => dispatch({ type: "start" })} />;
+        return <Welcome status={status} onStart={() => dispatch({ type: "start" })} />;
       case "service":
-        return (
-          <Service
-            services={SAMPLE_SERVICES}
-            onPick={(serviceId) => dispatch({ type: "pickService", serviceId })}
-            onBack={back}
-          />
-        );
+        return <Service services={services} onPick={pickService} onBack={back} />;
       case "time": {
-        const service = findService(state.serviceId);
+        const service = services?.find((candidate) => candidate.id === state.serviceId);
         return (
           <Time
-            backLabel={`${service.label} · ${service.priceLabel}`}
-            slots={SAMPLE_SLOTS}
+            backLabel={service ? `${service.label} · ${service.priceLabel}` : "Back"}
+            slots={slots}
             notice={state.notice}
             onPick={(slot) => dispatch({ type: "pickSlot", slot })}
             onBack={back}
@@ -181,21 +203,21 @@ export default function KioskPage() {
         );
       }
       case "details": {
-        const { slot } = state;
-        const { label } = findService(state.serviceId);
+        const { serviceId, slot } = state;
+        const service = services?.find((candidate) => candidate.id === serviceId);
         return (
           <Details
-            serviceLabel={label}
+            serviceLabel={service?.label ?? ""}
             slot={slot}
-            onBook={(firstName) => book(label, slot, firstName)}
+            onBook={(firstName, phone) => book(serviceId, slot, firstName, phone)}
             onBack={back}
           />
         );
       }
       case "done":
-        return <Done result={state.result} onDismiss={reset} />;
+        return <Done result={state.result} onDismiss={() => dispatch({ type: "reset" })} />;
       case "error":
-        return <ErrorScreen onRestart={reset} />;
+        return <ErrorScreen onRestart={() => dispatch({ type: "reset" })} />;
     }
   }
 

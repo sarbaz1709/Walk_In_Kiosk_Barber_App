@@ -2,12 +2,13 @@ import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Screen } from "@/components/ui/Screen";
 import { TextField } from "@/components/ui/TextField";
-import type { SlotDTO } from "./types";
+import type { CustomerField, SlotDTO } from "./types";
 
 type DetailsProps = {
   serviceLabel: string;
   slot: SlotDTO;
-  onBook: (firstName: string, phone: string) => void;
+  // Resolves with the fields the server rejected, if the customer can fix them.
+  onBook: (firstName: string, phone: string) => Promise<CustomerField[] | undefined>;
   onBack: () => void;
 };
 
@@ -32,6 +33,7 @@ export function Details({ serviceLabel, slot, onBook, onBack }: DetailsProps) {
   const [firstName, setFirstName] = useState("");
   const [phone, setPhone] = useState("");
   const [booking, setBooking] = useState(false);
+  const [rejected, setRejected] = useState<CustomerField[]>([]);
 
   const name = firstName.trim();
   const isValid = name.length <= 30 && NAME_PATTERN.test(name) && phone.length === 10;
@@ -39,19 +41,28 @@ export function Details({ serviceLabel, slot, onBook, onBack }: DetailsProps) {
   const summary = `${serviceLabel} · ${slot.isNow ? "Now" : `Today ${slot.label}`}`;
   const bookLabel = slot.isNow ? "Book now" : `Book ${slot.label}`;
 
-  function book() {
+  async function book() {
     setBooking(true);
-    onBook(name, phone);
+    setRejected([]);
+    const fields = await onBook(name, phone);
+    if (fields) {
+      setRejected(fields);
+      setBooking(false);
+    }
   }
 
   return (
-    <Screen title={summary} onBack={onBack}>
+    <Screen title={summary} onBack={booking ? undefined : onBack}>
       <div className="flex flex-col gap-6">
         <TextField
           label="First name"
           placeholder="Carlos"
           value={firstName}
-          onChange={(value) => setFirstName(capitalizeFirst(value))}
+          onChange={(value) => {
+            setFirstName(capitalizeFirst(value));
+            setRejected([]);
+          }}
+          invalid={rejected.includes("firstName")}
           maxLength={30}
           autoCapitalize="words"
           autoComplete="off"
@@ -63,7 +74,11 @@ export function Details({ serviceLabel, slot, onBook, onBack }: DetailsProps) {
           placeholder="(403) 555-0123"
           hint="For your booking confirmation."
           value={formatPhone(phone)}
-          onChange={(value) => setPhone(phoneDigits(value))}
+          onChange={(value) => {
+            setPhone(phoneDigits(value));
+            setRejected([]);
+          }}
+          invalid={rejected.includes("phone")}
           inputMode="tel"
           autoComplete="off"
         />

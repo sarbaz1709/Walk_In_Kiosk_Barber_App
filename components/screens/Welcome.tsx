@@ -5,24 +5,25 @@ import { Screen } from "@/components/ui/Screen";
 import type { KioskStatus } from "./types";
 
 type WelcomeProps = {
-  status: KioskStatus;
+  status: KioskStatus | null; // null = still loading
   onStart: () => void;
 };
 
-function closedHeadline(status: KioskStatus) {
+function headline(status: KioskStatus) {
+  if (status.state === "open") return "Walk in?";
   return status.state === "before_open"
     ? `Walk-ins open at ${status.opensAt}.`
     : "Walk-ins are closed for today.";
 }
 
 export function Welcome({ status, onStart }: WelcomeProps) {
-  const isOpen = status.state === "open";
+  const isOpen = status?.state === "open";
 
   return (
     <Screen>
       <p className="mb-12 text-body uppercase">{shop.name}</p>
 
-      <h1 className="text-display">{isOpen ? "Walk in?" : closedHeadline(status)}</h1>
+      <h1 className="min-h-14 text-display">{status && headline(status)}</h1>
       {isOpen && <p className="mt-2 text-body">Book the next free time.</p>}
 
       {isOpen && (
