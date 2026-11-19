@@ -31,10 +31,3 @@ export function toIsoTime(time: DateTime) {
 export function timeLabel(time: DateTime) {
   return time.toFormat("h:mm a", { locale });
 }
-
-// 14:02 with a 15-minute step becomes 14:15. 14:15 stays 14:15.
-export function roundUpToStep(time: DateTime, stepMin: number) {
-  const hour = time.startOf("hour");
-  const minutes = time.diff(hour, "minutes").minutes;
-  return hour.plus({ minutes: Math.ceil(minutes / stepMin) * stepMin });
-}

@@ -1,12 +1,13 @@
 import { connection } from "next/server";
 import { apiError, json, upstreamError } from "@/lib/api";
 import { getKioskServices } from "@/lib/services";
-import { placeholderSlots } from "@/lib/slots/placeholder";
-import { todayDate } from "@/lib/time";
+import { todaySlots } from "@/lib/slots/today";
+import { nowInShop, todayDate } from "@/lib/time";
 
 export async function GET(request: Request) {
   await connection(); // always answer per request, never from a build-time copy
   const serviceId = new URL(request.url).searchParams.get("service");
+  const now = nowInShop();
 
   try {
     const services = await getKioskServices();
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
       return apiError(400, "INVALID_INPUT", "Unknown service", { fields: ["service"] });
     }
 
-    const slots = await placeholderSlots(service.durationMin);
-    return json({ date: todayDate(), slots });
+    const slots = await todaySlots(service.durationMin, now);
+    return json({ date: todayDate(now), slots });
   } catch (error) {
     return upstreamError("GET /api/slots", error);
   }

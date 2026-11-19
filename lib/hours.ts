@@ -4,8 +4,12 @@ import { atShopTime, nowInShop, timeLabel, todayDate } from "@/lib/time";
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 
+export function dayKey(now = nowInShop()) {
+  return DAY_KEYS[now.weekday - 1];
+}
+
 export function todayHours(now = nowInShop()) {
-  const hours = shop.hours[DAY_KEYS[now.weekday - 1]];
+  const hours = shop.hours[dayKey(now)];
   if (!hours) return null;
 
   const date = todayDate(now);

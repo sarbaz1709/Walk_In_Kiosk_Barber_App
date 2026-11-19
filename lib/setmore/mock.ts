@@ -14,8 +14,8 @@ const TODAYS_APPOINTMENTS = [
 ];
 
 export class MockSetmoreClient implements SetmoreClient {
-  // Times "another customer" grabbed during a simulated MOCK_FAIL=taken race.
-  private takenByOthers: Busy[] = [];
+  // Kiosk bookings, plus times "another customer" grabbed under MOCK_FAIL=taken.
+  private bookings: Busy[] = [];
   private nextBookingIsTaken = true;
 
   async listServices(): Promise<Service[]> {
@@ -30,18 +30,22 @@ export class MockSetmoreClient implements SetmoreClient {
 
   async listBusy(date: string): Promise<Busy[]> {
     await this.simulateCall();
-    if (date !== todayDate()) return [];
 
-    const seeded: Busy[] = TODAYS_APPOINTMENTS.map(({ start, end }) => ({
-      start: atShopTime(start, date),
-      end: atShopTime(end, date),
-      source: "appointment",
-    }));
-    return [...seeded, ...this.takenByOthers];
+    const seeded: Busy[] =
+      date === todayDate()
+        ? TODAYS_APPOINTMENTS.map(({ start, end }) => ({
+            start: atShopTime(start, date),
+            end: atShopTime(end, date),
+            source: "appointment",
+          }))
+        : [];
+    const booked = this.bookings.filter((booking) => todayDate(booking.start) === date);
+    return [...seeded, ...booked];
   }
 
   async createBooking(input: BookingInput): Promise<{ appointmentKey: string }> {
     await this.simulateCall();
+    const { start, end, phone } = input;
 
     // MOCK_FAIL=taken: every other booking loses the race, so the customer can
     // see the "just taken" message and then still finish with another time.
@@ -49,11 +53,12 @@ export class MockSetmoreClient implements SetmoreClient {
       const isTaken = this.nextBookingIsTaken;
       this.nextBookingIsTaken = !isTaken;
       if (isTaken) {
-        this.takenByOthers.push({ start: input.start, end: input.end, source: "appointment" });
+        this.bookings.push({ start, end, source: "appointment" });
         throw new SlotTakenError();
       }
     }
 
+    this.bookings.push({ start, end, source: "appointment", customerPhone: phone });
     return { appointmentKey: `mock-${randomUUID()}` };
   }
 

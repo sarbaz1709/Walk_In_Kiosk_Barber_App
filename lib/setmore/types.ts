@@ -11,6 +11,7 @@ export type Busy = {
   start: DateTime;      // always in America/Edmonton
   end: DateTime;
   source: "appointment" | "block";
+  customerPhone?: string; // E.164, only used for the duplicate-booking check
 };
 
 export type BookingInput = {
